@@ -91,7 +91,11 @@
     while (bits.length % 8) bits.push(0);
     const data = bitsToBytes(bits);
     const pads = [0xec, 0x11];
-    while (data.length < dataCount) data.push(pads[data.length % 2]);
+    let pad = 0;
+    while (data.length < dataCount) {
+      data.push(pads[pad % 2]);
+      pad += 1;
+    }
     return data;
   }
 
@@ -184,8 +188,8 @@
         alignment(matrix, reserved, r, c);
       });
     });
-    reserved[8][size - 8] = 1;
-    matrix[8][size - 8] = 1;
+    reserved[size - 8][8] = 1;
+    matrix[size - 8][8] = 1;
     for (let i = 0; i < 8; i += 1) {
       reserved[8][i] = 1;
       reserved[i][8] = 1;
@@ -262,8 +266,8 @@
   function drawFormat(matrix, mask) {
     const size = matrix.length;
     const bits = formatBits(mask);
-    const set = (r, c, index) => {
-      matrix[r][c] = bitAt(bits, index);
+    const set = (x, y, index) => {
+      matrix[y][x] = bitAt(bits, index);
     };
     for (let i = 0; i <= 5; i += 1) set(8, i, i);
     set(8, 7, 6);
@@ -272,7 +276,7 @@
     for (let i = 9; i <= 14; i += 1) set(14 - i, 8, i);
     for (let i = 0; i <= 7; i += 1) set(size - 1 - i, 8, i);
     for (let i = 8; i <= 14; i += 1) set(8, size - 15 + i, i);
-    matrix[8][size - 8] = 1;
+    matrix[size - 8][8] = 1;
   }
 
   function drawVersion(matrix, version) {

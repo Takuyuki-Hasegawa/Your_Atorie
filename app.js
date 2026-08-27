@@ -1012,7 +1012,7 @@ function passView(url, title) {
   } catch {
     toast('QRを作れませんでした');
   }
-  app.innerHTML = `<main class="pass"><header class="topbar"><button class="nav-back" type="button" id="pass-back">←</button><span class="brand">YOUR ATORIE</span><span></span></header><section class="pass-stage"><div><div class="pass-qr">${svg}</div><h1 class="pass-title">${esc(title || '')}</h1></div></section></main>`;
+  app.innerHTML = `<main class="pass"><header class="topbar"><button class="nav-back" type="button" id="pass-back">←</button><span class="brand">YOUR ATORIE</span><span></span></header><section class="pass-stage"><div><div class="pass-qr">${svg}</div><h1 class="pass-title">${esc(title || '')}</h1><p class="pass-url">${esc(url)}</p></div></section></main>`;
   document.querySelector('#pass-back').onclick = () => {
     location.hash = 'create';
     creator();
