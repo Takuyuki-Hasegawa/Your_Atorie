@@ -46,6 +46,7 @@ cover → list → picker → open
 
 ```text
 trip
+  author
   title
   intro
   cards[]
@@ -57,7 +58,7 @@ trip
     cards[]          あれば束。中は同じ形だが cards は空
 ```
 
-旧データ `topics[]` と `kind` / `body` / `name` は `normalizeTrip()` がこの形へ移す。下書きでは `旅で感じたこと` が無ければ足す。箱から読むときは足さない。
+旧データ `topics[]` と `kind` / `body` / `name` は `normalizeTrip()` がこの形へ移す。`author` が無ければ `takuyuki hasegawa`。下書きでは `旅で感じたこと` が無ければ足す。箱から読むときは足さない。
 
 ## 保存の計画（①〜⑤）
 
@@ -126,8 +127,8 @@ PCの作成画面で「渡す」
   → 同じ id を使い回す（trips/.current-id）
   → trips/{id}.json
   → media/{id}/…
-  → git add / commit / push（この二箇所だけ）
-  → push できたら QR
+  → git add / 変わっていれば commit / push（この二箇所だけ）
+  → 箱にあれば QR（すでに載っていても出す）
 公開URL
   https://takuyuki-hasegawa.github.io/Your_Atorie/?c={id}
 QR
@@ -170,8 +171,8 @@ QR
 
 1. いまの下書きを pack する（写真は Data URL）
 2. `127.0.0.1:4180/publish` へ送る
-3. `trips/{id}.json` と `media/{id}/` を書いて push する。同じ id なら上書き
-4. push できたら QR を出す。できなければ QR は出さない
+3. `trips/{id}.json` と `media/{id}/` を書いて、変わっていれば push する。同じ id なら上書き
+4. 箱にあれば QR を出す。送れなければ QR は出さない
 
 公開オリジンの「スマホへ」は出さない。`node server.mjs` が②と④の窓口。
 

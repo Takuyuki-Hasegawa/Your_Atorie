@@ -16,6 +16,7 @@ const blankLeaf = (title = '新しいカード') => ({
 });
 
 const initial = {
+  author: 'takuyuki hasegawa',
   title: '中国で、出会ったもの。',
   intro: '僕が中国で心に残ったものを、あなたに手渡します。',
   cards: [
@@ -95,6 +96,7 @@ let activeLeaf = '';
 let mediaDbPromise = null;
 let deckKeyHandler = null;
 let publishedMode = false;
+let joyOpen = false;
 
 function publishedId() {
   const id = new URLSearchParams(location.search).get('c') || '';
@@ -173,9 +175,23 @@ function normalizeTrip() {
     trip.cards = trip.topics;
   }
   delete trip.topics;
+  trip.author = (trip.author || '').trim() || 'takuyuki hasegawa';
   trip.cards ||= [];
   trip.cards.forEach(normalizeCard);
   if (!publishedMode) ensureFeelingCard();
+}
+
+function authorName() {
+  return (trip.author || '').trim() || 'takuyuki hasegawa';
+}
+
+function joyLayer() {
+  const title = (trip.title || '').trim() || '無題';
+  return `<div class="joy" id="joy"><div class="joy-window"><p>あなたは${esc(authorName())}さんの「${esc(title)}」のcardを受け取りました！</p></div></div>`;
+}
+
+function isReceiveLanding() {
+  return publishedMode || isPhonePreview() || (isViewOnly() && !publishedId());
 }
 
 function clearMediaFields(card) {
@@ -290,7 +306,8 @@ function shell(content, { back, title, extra } = {}) {
     ? `<h1 class="top-title">${esc(title)}</h1>`
     : '<span class="brand">YOUR ATORIE</span>';
   const trailing = extra || createButton || '<span></span>';
-  app.innerHTML = `<main class="phone"><header class="topbar">${backBtn}${label}${trailing}</header>${content}</main>`;
+  const joy = joyOpen ? joyLayer() : '';
+  app.innerHTML = `<main class="phone"><header class="topbar">${backBtn}${label}${trailing}</header>${content}${joy}</main>`;
   const creatorLink = document.querySelector('#creator-link');
   if (creatorLink) {
     creatorLink.onclick = () => {
@@ -298,6 +315,7 @@ function shell(content, { back, title, extra } = {}) {
       creator();
     };
   }
+  bindJoy();
   bindRecipient();
 }
 
@@ -367,6 +385,16 @@ function recipient() {
   const leaves = leavesOf(card);
   const leaf = leaves.find(item => item.id === activeLeaf) || leaves[0];
   return openView(card, leaf);
+}
+
+function bindJoy() {
+  const joy = document.querySelector('#joy');
+  if (!joy) return;
+  joy.onclick = event => {
+    if (event.target.closest('.joy-window')) return;
+    joyOpen = false;
+    joy.remove();
+  };
 }
 
 function bindRecipient() {
@@ -795,7 +823,7 @@ function cardEditor(card, index) {
 function creator() {
   history.replaceState({}, '', `${location.pathname}#create`);
   const debugPush = isDebugHost() ? '<button id="push-debug">スマホへ</button>' : '';
-  app.innerHTML = `<main class="creator"><header class="creator-header"><div><h1>中国旅のカードをつくる</h1><p>全部カードです。一枚のまま書くか、中にカードを足して束にします。下書きはこのブラウザに保存されます。</p></div><div class="creator-actions"><button id="recipient">受け手画面を見る</button>${debugPush}<button class="publish" id="publish">渡す</button></div></header><div class="creator-main"><section><div class="section"><h2>渡す一枚</h2>${field('タイトル', trip.title, 'title')}${field('タイトルの下の文章', trip.intro, 'intro', true)}</div><div class="section"><h2>カード</h2>${trip.cards.map((card, index) => cardEditor(card, index)).join('')}<button class="add" id="add-card">＋ カードを追加</button></div></section><aside class="preview"><span>PREVIEW</span><div class="frame" id="preview"></div></aside></div></main>`;
+  app.innerHTML = `<main class="creator"><header class="creator-header"><div><h1>中国旅のカードをつくる</h1><p>全部カードです。一枚のまま書くか、中にカードを足して束にします。下書きはこのブラウザに保存されます。</p></div><div class="creator-actions"><button id="recipient">受け手画面を見る</button>${debugPush}<button class="publish" id="publish">渡す</button></div></header><div class="creator-main"><section><div class="section"><h2>渡す一枚</h2>${field('名前', trip.author, 'author')}${field('タイトル', trip.title, 'title')}${field('タイトルの下の文章', trip.intro, 'intro', true)}</div><div class="section"><h2>カード</h2>${trip.cards.map((card, index) => cardEditor(card, index)).join('')}<button class="add" id="add-card">＋ カードを追加</button></div></section><aside class="preview"><span>PREVIEW</span><div class="frame" id="preview"></div></aside></div></main>`;
   bindCreator();
   preview();
 }
@@ -891,6 +919,7 @@ function bindCreator() {
     await pushDebugDraft(true);
     location.hash = '';
     page = 'cover';
+    joyOpen = true;
     recipient();
   };
 
@@ -910,7 +939,7 @@ function bindCreator() {
 
 function set(path, value) {
   const parts = path.split('.');
-  if (parts[0] === 'title' || parts[0] === 'intro') {
+  if (parts[0] === 'author' || parts[0] === 'title' || parts[0] === 'intro') {
     trip[parts[0]] = value;
     return;
   }
@@ -1056,6 +1085,7 @@ async function loadPublished(id) {
     trip = snapshot;
     normalizeTrip();
     page = 'cover';
+    joyOpen = true;
     return true;
   } catch {
     return false;
@@ -1174,6 +1204,7 @@ async function start() {
   }
   const pulled = await pullDebugDraft();
   if (!pulled) save();
+  if (isReceiveLanding()) joyOpen = true;
   renderCurrent();
   hydrateMedia().catch(() => {
     toast('保存済みメディアの読み込みに失敗しました');

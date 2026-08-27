@@ -119,6 +119,7 @@ function writePublished(trip) {
   });
   if (!n) fs.rmSync(mediaDir, { recursive: true, force: true });
   const payload = {
+    author: trip.author || '',
     title: trip.title || '',
     intro: trip.intro || '',
     cards: trip.cards || []
@@ -127,15 +128,70 @@ function writePublished(trip) {
   return id;
 }
 
+function gitEnv() {
+  const env = { ...process.env };
+  delete env.GIT_TERMINAL_PROMPT;
+  return env;
+}
+
+function git(args) {
+  return execFileSync('git', args, {
+    cwd: root,
+    env: gitEnv(),
+    stdio: 'pipe',
+    encoding: 'utf8',
+    maxBuffer: 20 * 1024 * 1024
+  });
+}
+
+function gitPush() {
+  try {
+    git(['push', 'origin', 'HEAD']);
+    return;
+  } catch (first) {
+    let token = '';
+    try {
+      token = execFileSync('gh', ['auth', 'token'], {
+        cwd: root,
+        env: gitEnv(),
+        stdio: ['ignore', 'pipe', 'pipe'],
+        encoding: 'utf8',
+        timeout: 15000
+      }).trim();
+    } catch {
+      throw first;
+    }
+    if (!token) throw first;
+    const auth = Buffer.from(`x-access-token:${token}`).toString('base64');
+    execFileSync('git', [
+      '-c', `http.https://github.com/.extraheader=AUTHORIZATION: Basic ${auth}`,
+      'push',
+      'origin',
+      'HEAD'
+    ], {
+      cwd: root,
+      env: gitEnv(),
+      stdio: 'pipe',
+      encoding: 'utf8',
+      maxBuffer: 20 * 1024 * 1024,
+      timeout: 180000
+    });
+  }
+}
+
 function publishGit(id) {
-  if (process.env.ATORIE_PUBLISH_GIT === '0') return false;
   const files = [`trips/${id}.json`];
   const mediaDir = path.join(root, 'media', id);
   if (fs.existsSync(mediaDir) && fs.readdirSync(mediaDir).length) files.push(`media/${id}`);
-  const env = { ...process.env };
-  execFileSync('git', ['add', '--', ...files], { cwd: root, env, stdio: 'pipe', encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
-  execFileSync('git', ['commit', '-m', `Publish trip ${id}`], { cwd: root, env, stdio: 'pipe', encoding: 'utf8' });
-  execFileSync('git', ['push', 'origin', 'HEAD'], { cwd: root, env, stdio: 'pipe', encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
+  git(['add', '--', ...files]);
+  const dirty = git(['status', '--porcelain', '--', ...files]).trim();
+  if (!dirty) {
+    console.log('publish-git', id, 'already on HEAD');
+    return true;
+  }
+  git(['commit', '-m', `Publish trip ${id}`]);
+  gitPush();
+  console.log('publish-git', id, 'pushed');
   return true;
 }
 
@@ -184,15 +240,17 @@ const server = http.createServer(async (req, res) => {
       const trip = JSON.parse((await readBody(req)).toString('utf8'));
       if (!trip || !Array.isArray(trip.cards)) throw new Error('bad trip');
       const id = writePublished(trip);
+      console.log('publish', id);
       let pushed = false;
       try {
         pushed = publishGit(id);
       } catch (error) {
-        const detail = [error.message, error.stderr && String(error.stderr), error.stdout && String(error.stdout)]
+        const detail = [error.stderr && String(error.stderr), error.stdout && String(error.stdout), error.code]
           .filter(Boolean)
           .join('\n');
-        console.error(detail || error);
+        console.log('publish-git fail', detail || String(error && error.message || 'failed'));
       }
+      console.log('publish', id, pushed ? 'ok' : 'not-pushed');
       send(res, 200, 'application/json; charset=utf-8', JSON.stringify({
         id,
         url: `${publicOrigin}/?c=${id}`,
