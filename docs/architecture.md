@@ -9,22 +9,27 @@
 ```
 index.html  　#app に全部描く
 app.js       状態、保存、画面
-styles.css   受け手（.phone）と作成者（.creator）
-server.mjs   ②のデバッグ用。同じWi-Fiのスマホへ下書きを置く
+styles.css   受け手（.phone）と作成者（.creator）と渡す（.pass）
+qr.js        QRのSVG。依存追加なし
+server.mjs   ②のコピー機と、④で箱へ置く窓口
+trips/       渡したカードのJSON
+media/       渡した写真・動画
 ```
 
-依存は Google Fonts だけ（Outfit / Noto Serif JP / Playfair Display / DM Mono）。
+依存は Google Fonts だけ（Outfit / Noto Serif JP / Playfair Display / DM Mono）。QRは自前の `qr.js`。
 
-確認の段階は [process.md](./process.md)。いまは③。保存を段階ごとにどこへ置くかは、下の「保存の計画」が正。
+確認の段階は [process.md](./process.md)。いまは④。保存を段階ごとにどこへ置くかは、下の「保存の計画」が正。
 
 ## 画面の切り替え
 
 
-| 条件                            | 画面            |
-| ----------------------------- | ------------- |
-| `location.hash === '#create'` | 作成画面（入力）      |
-| それ以外                          | 受け手画面（出力）     |
-| `?view=1`                     | 受け手画面。作成ボタンなし |
+| 条件                            | 画面                 |
+| ----------------------------- | ------------------ |
+| `location.hash === '#create'` | 作成画面（入力）           |
+| `location.hash === '#pass'`   | QR（渡す瞬間）           |
+| それ以外                          | 受け手画面（出力）          |
+| `?view=1`                     | 受け手画面。作成ボタンなし      |
+| `?c={id}`                     | 箱から読んだ受け手画面。作成ボタンなし |
 
 
 受け手の中は JS 変数 `page` で動く。
@@ -52,7 +57,7 @@ trip
     cards[]          あれば束。中は同じ形だが cards は空
 ```
 
-旧データ `topics[]` と `kind` / `body` / `name` は `normalizeTrip()` がこの形へ移す。`旅で感じたこと` が無ければ足す。
+旧データ `topics[]` と `kind` / `body` / `name` は `normalizeTrip()` がこの形へ移す。下書きでは `旅で感じたこと` が無ければ足す。箱から読むときは足さない。
 
 ## 保存の計画（①〜⑤）
 
@@ -64,9 +69,8 @@ trip
 | `file:///C:/Users/takuy/code/Your_Atorie/index.html` | このファイル専用。①で書いていた本体はここ    |
 | `http://127.0.0.1:4180/`                             | 4180 専用。空の別箱             |
 | `http://192.168.x.x:4180/`                           | スマホのブラウザ。②ではサーバー上のコピーを読む |
-| `https://takuyuki-hasegawa.github.io/Your_Atorie/`   | ③の公開オリジン。アプリの箱。下書きはまだこのブラウザ |
-
-
+| `https://takuyuki-hasegawa.github.io/Your_Atorie/`   | アプリの箱。`?c=` が無いと下書きは空    |
+| `https://…/Your_Atorie/?c={id}`                      | ④の受け取り。`trips/{id}.json` |
 
 
 ### ① PC上で確認
@@ -99,37 +103,44 @@ PCで「スマホへ」
 
 `server.mjs` は LAN のコピー機。本番の公開ではない。手元の手順は [process.md](./process.md) の「② のやり方」。
 
-### ③ web上にリリース（いま）
+### ③ web上にリリース
 
-アプリのファイル（`index.html` / `app.js` / `styles.css`）を HTTPS の公開オリジンに置く。GitHub Pages。`main` への push で Actions が配信する。
+アプリのファイルを HTTPS の公開オリジンに置く。GitHub Pages。`main` への push で Actions が配信する。
 
 ```
 アプリ本体     → https://takuyuki-hasegawa.github.io/Your_Atorie/
 入力の下書き   → まだ作成者のブラウザ（①と同じ localStorage / IndexedDB）
-他人の端末     → まだ見えない
 ```
 
 ③は「自分のスマホからアプリのURLを開ける」まで。カード一式がネットに乗るのは④。公開オリジンでは②の「スマホへ」を出さない。
 
-### ④ QRで他人が読める
+### ④ QRで他人が読める（いま）
 
 会っている相手がカメラで読む。そのQRの先で、②と同じ出力が見える必要がある。だからここで初めて、カードをブラウザの外に出す。
 
+箱は同じ GitHub Pages。ブラウザは Pages に直接置けないので、PCの `server.mjs` が窓口になる。
+
 ```
-渡す一枚の id
-  trips/{id}.json     タイトル、概要、文章、束の構造、メディアのURL
-  media/{id}/…        写真・動画の本体
+PCの作成画面で「渡す」
+  → POST http://127.0.0.1:4180/publish   （loopback だけ）
+  → trips/{id}.json
+  → media/{id}/…
+  → git add / commit / push（この二箇所だけ）
 公開URL
-  https://{host}/?c={id}
+  https://takuyuki-hasegawa.github.io/Your_Atorie/?c={id}
 QR
-  そのURL
+  そのURL。作成画面の次に出す
+受け手
+  GET ./trips/{id}.json
+  media は JSON に書いた相対URL
+  下書きの localStorage は上書きしない
 ```
 
 作成の流れは `書く → この箱に置く → QRを画面に出す`。QRに載せるのはURLだけ。チャットに貼って遠隔配信するのが主目的ではない。
 
-アカウントはまだ作らない。URLを持っている人が見られる。信頼の輪の外に出さない、は運用と画面の出し方で守る。
+アカウントはまだ作らない。URLを持っている人が見られる。リポジトリは public なので、`trips/` は GitHub 上で列挙できる。信頼の輪の外に出さない、は運用で守る。id を広告しない。
 
-実装の箱（どのホストか）は④に入るときに選ぶ。必要なのは上の3つ（JSON、メディア、id付きURL）だけ。
+`?c=` を開いているときは `publishedMode`。`save()` しない。
 
 ### ⑤ QRの先が②と同じ
 
@@ -145,30 +156,25 @@ QR
 
 ## 描画
 
-`innerHTML` で画面を作り直す。作成画面の入力のたびにプレビューを描き直す。XSS 対策として表示文字列は `esc()` する。メディア URL は自分で作った blob URL、または④以降の配信URLを `src` に使う。
+`innerHTML` で画面を作り直す。作成画面の入力のたびにプレビューを描き直す。XSS 対策として表示文字列は `esc()` する。メディア URL は自分で作った blob URL、または④の `./media/{id}/…` を `src` に使う。
 
 選ぶ画面は手札。カードは右下にずらして重ねる。見えている裏を押すとそのカードが手前へ滑る。手前を押して選ぶ。ずらしてもめくれる。下に払うと一段戻る（開いたカード → 手札 → 表紙）。写真は写真面から下へ。文章はスクロール先頭で下へ。手札の写真はカード型に切り抜く。開いた写真は上に全体を載せ、文章をすぐ下に置く。カードの縁の光で画面と分ける。開いたあとはその一枚だけ。画像のネイティブドラッグは無効。動画は開いたカードの再生ボタンで再生する。表紙と手札の動画は無音ループ。
 
+渡す画面は暗い。QRが大きく、タイトルだけ。説明文は足さない。
+
 ## 公開の現状
 
-「公開する」は次だけをする。
+「渡す」は次をする。
 
-1. いまの下書きを `localStorage` に保存する
-2. `?view=1` 付きの受け手URLをクリップボードへコピーする
+1. いまの下書きを pack する（写真は Data URL）
+2. `127.0.0.1:4180/publish` へ送る
+3. `trips/{id}.json` と `media/{id}/` を書いて push する
+4. QR画面を出す
 
-この URL は **同じブラウザの下書き** を開く。別の人の端末にはカードも写真も届かない。④のホスティング（カードJSONとメディア）は未接続。
-
-作成画面の「スマホへ」は②用。ローカルと LAN だけに出す。`node server.mjs` が `debug-draft.json` に置き、スマホがそれを読む。
+公開オリジンの「スマホへ」は出さない。`node server.mjs` が②と④の窓口。
 
 ## 次の実装で足すもの
 
-いまは③。思想上の次は **作成 → QR表示（④）**。
-
-④で少なくとも次が要る。
-
-1. `trips/{id}.json` の永続化
-2. `media/{id}/…` の配信
-3. QRに載せる `?c={id}`
-4. 作成画面から、そのQRを出す画面
+いまは④。思想上の次は **QRの先が②と同じことの確認（⑤）**。画面は足さない。
 
 アカウント、友達通知、Bluetooth、他のカード型は、このあと。いいねとカード単位コメントも、渡せるようになってから。

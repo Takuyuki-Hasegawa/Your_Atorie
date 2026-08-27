@@ -94,9 +94,16 @@ let activeCard = '';
 let activeLeaf = '';
 let mediaDbPromise = null;
 let deckKeyHandler = null;
+let publishedMode = false;
+
+function publishedId() {
+  const id = new URLSearchParams(location.search).get('c') || '';
+  return /^[a-zA-Z0-9_-]+$/.test(id) ? id : '';
+}
 
 function isViewOnly() {
-  return new URLSearchParams(location.search).has('view');
+  const query = new URLSearchParams(location.search);
+  return query.has('view') || Boolean(publishedId());
 }
 
 function isLanHost(host) {
@@ -168,7 +175,7 @@ function normalizeTrip() {
   delete trip.topics;
   trip.cards ||= [];
   trip.cards.forEach(normalizeCard);
-  ensureFeelingCard();
+  if (!publishedMode) ensureFeelingCard();
 }
 
 function clearMediaFields(card) {
@@ -177,6 +184,7 @@ function clearMediaFields(card) {
 }
 
 function save() {
+  if (publishedMode) return;
   const snapshot = structuredClone(trip);
   snapshot.cards.forEach(clearMediaFields);
   localStorage.setItem(key, JSON.stringify(snapshot));
@@ -787,7 +795,7 @@ function cardEditor(card, index) {
 function creator() {
   history.replaceState({}, '', `${location.pathname}#create`);
   const debugPush = isDebugHost() ? '<button id="push-debug">スマホへ</button>' : '';
-  app.innerHTML = `<main class="creator"><header class="creator-header"><div><h1>中国旅のカードをつくる</h1><p>全部カードです。一枚のまま書くか、中にカードを足して束にします。下書きはこのブラウザに保存されます。</p></div><div class="creator-actions"><button id="recipient">受け手画面を見る</button>${debugPush}<button class="publish" id="publish">公開する</button></div></header><div class="creator-main"><section><div class="section"><h2>渡す一枚</h2>${field('タイトル', trip.title, 'title')}${field('タイトルの下の文章', trip.intro, 'intro', true)}</div><div class="section"><h2>カード</h2>${trip.cards.map((card, index) => cardEditor(card, index)).join('')}<button class="add" id="add-card">＋ カードを追加</button></div></section><aside class="preview"><span>PREVIEW</span><div class="frame" id="preview"></div></aside></div></main>`;
+  app.innerHTML = `<main class="creator"><header class="creator-header"><div><h1>中国旅のカードをつくる</h1><p>全部カードです。一枚のまま書くか、中にカードを足して束にします。下書きはこのブラウザに保存されます。</p></div><div class="creator-actions"><button id="recipient">受け手画面を見る</button>${debugPush}<button class="publish" id="publish">渡す</button></div></header><div class="creator-main"><section><div class="section"><h2>渡す一枚</h2>${field('タイトル', trip.title, 'title')}${field('タイトルの下の文章', trip.intro, 'intro', true)}</div><div class="section"><h2>カード</h2>${trip.cards.map((card, index) => cardEditor(card, index)).join('')}<button class="add" id="add-card">＋ カードを追加</button></div></section><aside class="preview"><span>PREVIEW</span><div class="frame" id="preview"></div></aside></div></main>`;
   bindCreator();
   preview();
 }
@@ -887,13 +895,12 @@ function bindCreator() {
   };
 
   document.querySelector('#publish').onclick = async () => {
-    save();
-    const url = recipientUrl();
+    const button = document.querySelector('#publish');
+    button.disabled = true;
     try {
-      await navigator.clipboard.writeText(url);
-      toast('このブラウザ用の受け手リンクです。他人の端末にはまだ届きません');
-    } catch {
-      toast(url);
+      await publishTrip();
+    } finally {
+      button.disabled = false;
     }
   };
 
@@ -997,6 +1004,61 @@ async function applyDraft(snapshot, { openCover = false } = {}) {
   }
 }
 
+function passView(url, title) {
+  history.replaceState({}, '', `${location.pathname}${location.search}#pass`);
+  let svg = '';
+  try {
+    svg = qrSvg(url);
+  } catch {
+    toast('QRを作れませんでした');
+  }
+  app.innerHTML = `<main class="pass"><header class="topbar"><button class="nav-back" type="button" id="pass-back">←</button><span class="brand">YOUR ATORIE</span><span></span></header><section class="pass-stage"><div><div class="pass-qr">${svg}</div><h1 class="pass-title">${esc(title || '')}</h1></div></section></main>`;
+  document.querySelector('#pass-back').onclick = () => {
+    location.hash = 'create';
+    creator();
+  };
+}
+
+async function publishTrip() {
+  save();
+  const body = JSON.stringify(await packDraft());
+  const targets = ['/publish', 'http://127.0.0.1:4180/publish'];
+  for (const url of targets) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (!data?.url) continue;
+      sessionStorage.setItem('atorie-pass', JSON.stringify({ url: data.url, title: trip.title }));
+      if (!data.pushed) toast('箱には置けました。git push してください');
+      passView(data.url, trip.title);
+      return true;
+    } catch {}
+  }
+  toast('node server.mjs を起動してください');
+  return false;
+}
+
+async function loadPublished(id) {
+  try {
+    const res = await fetch(`./trips/${encodeURIComponent(id)}.json`, { cache: 'no-store' });
+    if (!res.ok) return false;
+    const snapshot = await res.json();
+    if (!snapshot || !Array.isArray(snapshot.cards)) return false;
+    publishedMode = true;
+    trip = snapshot;
+    normalizeTrip();
+    page = 'cover';
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function pushDebugDraft(silent = false) {
   const body = JSON.stringify(await packDraft());
   const targets = ['/debug-draft', 'http://127.0.0.1:4180/debug-draft'];
@@ -1077,6 +1139,17 @@ function toast(message) {
 }
 
 function renderCurrent() {
+  if (location.hash === '#pass' && !isViewOnly()) {
+    try {
+      const data = JSON.parse(sessionStorage.getItem('atorie-pass') || 'null');
+      if (data?.url) {
+        passView(data.url, data.title);
+        return;
+      }
+    } catch {}
+    creator();
+    return;
+  }
   if (location.hash === '#create' && !isViewOnly()) {
     creator();
     return;
@@ -1089,6 +1162,13 @@ start();
 window.addEventListener('hashchange', renderCurrent);
 
 async function start() {
+  const id = publishedId();
+  if (id) {
+    const ok = await loadPublished(id);
+    if (!ok) toast('このカードはまだ届いていません');
+    renderCurrent();
+    return;
+  }
   const pulled = await pullDebugDraft();
   if (!pulled) save();
   renderCurrent();

@@ -595,6 +595,45 @@ button { cursor: pointer; }
   color: white;
 }
 
+.creator-actions .publish:disabled {
+  opacity: .45;
+}
+
+.pass {
+  max-width: 430px;
+  min-height: 100svh;
+  margin: auto;
+  background: var(--night);
+}
+
+.pass-stage {
+  min-height: calc(100svh - 58px);
+  display: grid;
+  place-items: center;
+  padding: 28px 22px 48px;
+}
+
+.pass-qr {
+  width: min(72vw, 280px);
+  margin: 0 auto;
+  padding: 16px;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.pass-qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.pass-title {
+  margin: 22px 0 0;
+  text-align: center;
+  font: 500 22px/1.35 var(--display);
+  color: var(--ivory);
+}
+
 .creator-main {
   display: grid;
   grid-template-columns: 1fr 1fr;
