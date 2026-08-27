@@ -123,9 +123,9 @@ function publishGit(id) {
   const mediaDir = path.join(root, 'media', id);
   if (fs.existsSync(mediaDir) && fs.readdirSync(mediaDir).length) files.push(`media/${id}`);
   const env = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
-  execFileSync('git', ['add', '--', ...files], { cwd: root, env, stdio: 'pipe' });
-  execFileSync('git', ['commit', '-m', `Publish trip ${id}`], { cwd: root, env, stdio: 'pipe' });
-  execFileSync('git', ['push'], { cwd: root, env, stdio: 'pipe' });
+  execFileSync('git', ['add', '--', ...files], { cwd: root, env, stdio: 'pipe', encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
+  execFileSync('git', ['commit', '-m', `Publish trip ${id}`], { cwd: root, env, stdio: 'pipe', encoding: 'utf8' });
+  execFileSync('git', ['push'], { cwd: root, env, stdio: 'pipe', encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
   return true;
 }
 
@@ -178,7 +178,10 @@ const server = http.createServer(async (req, res) => {
       try {
         pushed = publishGit(id);
       } catch (error) {
-        console.error(error.stderr?.toString() || error.message);
+        const detail = [error.message, error.stderr && String(error.stderr), error.stdout && String(error.stdout)]
+          .filter(Boolean)
+          .join('\n');
+        console.error(detail || error);
       }
       send(res, 200, 'application/json; charset=utf-8', JSON.stringify({
         id,
