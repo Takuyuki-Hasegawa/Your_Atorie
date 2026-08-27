@@ -1034,7 +1034,10 @@ async function publishTrip() {
       const data = await res.json();
       if (!data?.url) continue;
       sessionStorage.setItem('atorie-pass', JSON.stringify({ url: data.url, title: trip.title }));
-      if (!data.pushed) toast('箱には置けました。git push してください');
+      if (!data.pushed) {
+        toast('箱に置けませんでした');
+        return false;
+      }
       passView(data.url, trip.title);
       return true;
     } catch {}

@@ -80,12 +80,11 @@ node server.mjs
 - ①を `file:///C:/Users/takuy/code/Your_Atorie/index.html` で書いていたなら、**その同じURL**（末尾 `#create`）
 - 公開URLや空の 4180 を新規に開いただけでは、①の下書きは乗っていない
 
-作成画面の **渡す** を押す。QRが出る。
+作成画面の **渡す** を押す。箱へ push できてから QR が出る。一分かかることがある。
 
 - 「node server.mjs を起動してください」→ 2 が動いていない
-- QRが出た → カードはディスクに置かれた。`git push` まで行けば Pages に載る
-
-`渡す` は `trips/` と `media/` だけを commit して push する。Pages の更新に一分かかることがある。すぐ読むと「まだ届いていません」になる。
+- 「箱に置けませんでした」→ push できていない。QRは出ない
+- QRが出た → Pages に載った。相手が読める
 
 ### 4. 会っている相手がQRを読む
 

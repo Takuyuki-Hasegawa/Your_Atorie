@@ -86,11 +86,21 @@ function isVideoMime(mime, name, mediaType) {
   return mediaType === 'video' || (mime || '').startsWith('video/') || /\.(mp4|webm|mov|m4v)$/i.test(name || '');
 }
 
+function publishedTripId() {
+  try {
+    const id = fs.readFileSync(path.join(root, 'trips', '.current-id'), 'utf8').trim();
+    if (/^[a-zA-Z0-9_-]+$/.test(id)) return id;
+  } catch {}
+  return '';
+}
+
 function writePublished(trip) {
-  const id = randomUUID();
+  const id = publishedTripId() || randomUUID();
+  fs.writeFileSync(path.join(root, 'trips', '.current-id'), `${id}\n`);
   const mediaDir = path.join(root, 'media', id);
   const tripsDir = path.join(root, 'trips');
   fs.mkdirSync(tripsDir, { recursive: true });
+  fs.rmSync(mediaDir, { recursive: true, force: true });
   fs.mkdirSync(mediaDir, { recursive: true });
   let n = 0;
   walkCards(trip, card => {
@@ -122,10 +132,10 @@ function publishGit(id) {
   const files = [`trips/${id}.json`];
   const mediaDir = path.join(root, 'media', id);
   if (fs.existsSync(mediaDir) && fs.readdirSync(mediaDir).length) files.push(`media/${id}`);
-  const env = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
+  const env = { ...process.env };
   execFileSync('git', ['add', '--', ...files], { cwd: root, env, stdio: 'pipe', encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
   execFileSync('git', ['commit', '-m', `Publish trip ${id}`], { cwd: root, env, stdio: 'pipe', encoding: 'utf8' });
-  execFileSync('git', ['push'], { cwd: root, env, stdio: 'pipe', encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
+  execFileSync('git', ['push', 'origin', 'HEAD'], { cwd: root, env, stdio: 'pipe', encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
   return true;
 }
 
