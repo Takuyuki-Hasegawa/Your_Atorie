@@ -14,7 +14,7 @@
 https://takuyuki-hasegawa.github.io/Your_Atorie/?c={id}
 ```
 
-渡すときは、写真が見えているPCのタブ（多くの場合 `file://…#create`）で `node server.mjs` を起動して **渡す** を押す。公開URLを開いただけでは、①で書いた写真は乗らない。
+渡すときは、写真が見えているPCのタブ（多くの場合 `file://…#create`）で `node server.mjs` を起動して **渡す** を押す。箱に置けてから QR が出る。公開URLを開いただけでは、①で書いた写真は乗らない。
 
 手元の LAN 確認はこれまでどおり。
 
