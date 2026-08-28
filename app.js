@@ -281,7 +281,7 @@ function recipientUrl() {
   return url.href;
 }
 
-const esc = value => (value || '').replace(/[&<>"]/g, char => ({
+const esc = value => String(value == null || typeof value === 'object' ? (typeof value === 'object' && value && ('ja' in value || 'en' in value) ? (value[lang] || value.ja || value.en || '') : '') : value).replace(/[&<>"]/g, char => ({
   '&': '&amp;',
   '<': '&lt;',
   '>': '&gt;',
@@ -1465,22 +1465,28 @@ function renderCurrent() {
 
 migrateDrafts();
 normalizeTrip();
+renderCurrent();
 start();
 window.addEventListener('hashchange', renderCurrent);
 
 async function start() {
-  const id = publishedId();
-  if (id) {
-    const ok = await loadPublished(id);
-    if (!ok) toast(u('notArrived'));
+  try {
+    const id = publishedId();
+    if (id) {
+      const ok = await loadPublished(id);
+      if (!ok) toast(u('notArrived'));
+      renderCurrent();
+      return;
+    }
+    const pulled = await pullDebugDraft();
+    if (!pulled) save();
+    if (isReceiveLanding()) joyOpen = true;
     renderCurrent();
-    return;
+    hydrateMedia().catch(() => {
+      toast(u('mediaFail'));
+    });
+  } catch (error) {
+    const appRoot = document.querySelector('#app');
+    if (appRoot) appRoot.textContent = String(error && error.message || error);
   }
-  const pulled = await pullDebugDraft();
-  if (!pulled) save();
-  if (isReceiveLanding()) joyOpen = true;
-  renderCurrent();
-  hydrateMedia().catch(() => {
-    toast(u('mediaFail'));
-  });
 }
