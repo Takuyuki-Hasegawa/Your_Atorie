@@ -248,7 +248,7 @@ const mediaDbName = 'your-atorie-china-media';
 let trip = structuredClone(initial);
 let atelier = { name: 'takuyuki hasegawa', current: '', cards: [] };
 let page = 'cover';
-let activeCard = '';
+let activeDeck = '';
 let activeLeaf = '';
 let mediaDbPromise = null;
 let deckKeyHandler = null;
@@ -554,7 +554,7 @@ function renderLeafCard(card) {
 
 function shell(content, { back, title } = {}) {
   const createButton = isViewOnly() || title ? '' : `<button id="creator-link">${esc(u('create'))}</button>`;
-  const backBtn = back ? `<button class="nav-back" type="button" data-page="${back}">←</button>` : '';
+  const backBtn = back ? '<button class="nav-back" type="button" data-back="1">←</button>' : '';
   const label = title
     ? `<h1 class="top-title">${esc(title)}</h1>`
     : '<span class="brand">YOUR ATORIE</span>';
@@ -586,61 +586,121 @@ function coverMedia() {
   return null;
 }
 
+function findCard(id) {
+  if (!id) return null;
+  for (const card of trip.cards) {
+    if (card.id === id) return card;
+    const inner = (card.cards || []).find(item => item.id === id);
+    if (inner) return inner;
+  }
+  return null;
+}
+
+function isTitleDeck() {
+  return trip.cards.length > 1;
+}
+
+function deckCards() {
+  if (!activeDeck) return trip.cards;
+  const card = findCard(activeDeck);
+  return isBundle(card) ? card.cards : [];
+}
+
+function deckTitle() {
+  if (!activeDeck) return readCopy(trip.title);
+  return readCopy(findCard(activeDeck)?.title);
+}
+
+function passAsLeaf() {
+  return {
+    id: trip.id || 'pass',
+    title: { ja: '', en: '' },
+    text: trip.intro,
+    media: '',
+    mediaName: '',
+    mediaType: ''
+  };
+}
+
 function coverCard(openable) {
   const source = coverMedia();
-  const action = openable ? ' data-page="list" role="button" tabindex="0"' : '';
+  const paper = !source;
+  const action = openable ? ' data-open="inside" role="button" tabindex="0"' : '';
   const intro = readCopy(trip.intro);
-  return `<div class="cover-wrap"${action}><span class="cover-back"></span><span class="cover-mid"></span><span class="cover-face">${mediaTag(source, 'cover-photo', 'ambience')}<span class="cover-copy"><h1>${esc(readCopy(trip.title))}</h1>${intro ? `<p>${esc(intro)}</p>` : ''}</span></span></div>`;
+  return `<div class="cover-wrap${paper ? ' is-letter' : ''}"${action}><span class="cover-back"></span><span class="cover-mid"></span><span class="cover-face">${mediaTag(source, 'cover-photo', 'ambience')}<span class="cover-copy"><h1>${esc(readCopy(trip.title))}</h1>${intro ? `<p>${esc(intro)}</p>` : ''}</span></span></div>`;
 }
 
-function leavesOf(card) {
-  if (isBundle(card)) return card.cards;
-  return [card];
-}
-
-function handFace(card, kind) {
-  const source = kind === 'topic' ? previewSource(card) : card;
+function handFace(card) {
+  const bundle = isBundle(card);
+  const source = bundle ? previewSource(card) : card;
   const heading = readCopy(card.title);
-  const media = mediaTag(source, 'hand-photo', kind === 'topic' ? 'ambience' : '');
+  const media = mediaTag(source, 'hand-photo', bundle ? 'ambience' : '');
   const blank = media ? '' : `<span class="hand-blank"><em>${mark(heading)}</em></span>`;
-  const note = kind === 'topic' ? readCopy(card.overview) : readCopy(card.text);
+  const note = bundle ? readCopy(card.overview) : readCopy(card.text);
   const copy = `<div class="hand-copy"><strong>${esc(heading)}</strong>${note ? `<small>${esc(note)}</small>` : ''}</div>`;
   return `<article class="hand-card${media ? '' : ' is-letter'}" data-hand-id="${card.id}"><div class="hand-face">${media}${blank}${copy}</div></article>`;
 }
 
-function pickerView(card) {
-  const leaves = leavesOf(card);
-  return shell(`<section class="hand-stage"><div class="hand" id="hand" data-pick="leaf">${leaves.map(item => handFace(item, 'leaf')).join('')}</div></section>`, {
-    back: 'list',
-    title: readCopy(card.title)
+function deckView() {
+  return shell(`<section class="hand-stage"><div class="hand" id="hand">${deckCards().map(card => handFace(card)).join('')}</div></section>`, {
+    back: true,
+    title: deckTitle()
   });
 }
 
-function topicHand() {
-  return shell(`<section class="hand-stage"><div class="hand" id="hand" data-pick="topic">${trip.cards.map(card => handFace(card, 'topic')).join('')}</div></section>`, { back: 'cover' });
+function openView() {
+  const leaf = activeLeaf ? findCard(activeLeaf) : passAsLeaf();
+  return shell(`<section class="reader" id="reader">${renderLeafCard(leaf || passAsLeaf())}</section>`, {
+    back: true,
+    title: deckTitle()
+  });
 }
 
-function openView(bundle, leaf) {
-  return shell(`<section class="reader" id="reader">${renderLeafCard(leaf)}</section>`, {
-    back: 'picker',
-    title: readCopy(bundle.title)
-  });
+function openFromCover() {
+  activeDeck = '';
+  activeLeaf = '';
+  const cards = trip.cards;
+  if (!cards.length) {
+    page = readCopy(trip.intro) ? 'open' : 'cover';
+    recipient();
+    return;
+  }
+  if (cards.length === 1) {
+    const only = cards[0];
+    if (isBundle(only)) {
+      activeDeck = only.id;
+      page = 'deck';
+    } else {
+      activeLeaf = only.id;
+      page = 'open';
+    }
+    recipient();
+    return;
+  }
+  page = 'deck';
+  recipient();
+}
+
+function pickFromDeck(id) {
+  const card = deckCards().find(item => item.id === id);
+  if (!card) return;
+  if (isBundle(card)) {
+    activeDeck = card.id;
+    activeLeaf = '';
+    page = 'deck';
+  } else {
+    activeLeaf = card.id;
+    page = 'open';
+  }
+  recipient();
 }
 
 function recipient() {
   if (page === 'cover') {
     return shell(`<section class="cover">${coverCard(true)}</section>`);
   }
-
-  if (page === 'list') {
-    return topicHand();
-  }
-
-  const card = trip.cards.find(item => item.id === activeCard) || trip.cards[0];
-  if (page === 'picker') return pickerView(card);
-  const leaves = leavesOf(card);
-  const leaf = leaves.find(item => item.id === activeLeaf) || leaves[0];
-  return openView(card, leaf);
+  if (page === 'deck') return deckView();
+  return openView();
 }
 
 function bindJoy() {
@@ -654,33 +714,21 @@ function bindJoy() {
 }
 
 function bindRecipient() {
-  document.querySelectorAll('[data-page]').forEach(button => {
-    button.onclick = () => {
-      page = button.dataset.page;
-      recipient();
+  document.querySelectorAll('[data-open]').forEach(el => {
+    el.onclick = () => {
+      if (el.dataset.open === 'inside') openFromCover();
     };
+  });
+
+  document.querySelectorAll('[data-back]').forEach(el => {
+    el.onclick = goBack;
   });
 
   const hand = document.querySelector('#hand');
   if (hand) {
-    const pick = hand.dataset.pick;
-    let start = 0;
-    if (pick === 'leaf') {
-      const card = trip.cards.find(item => item.id === activeCard);
-      const leaves = card ? leavesOf(card) : [];
-      start = Math.max(0, leaves.findIndex(item => item.id === activeLeaf));
-    }
-    enableHand(hand, start, id => {
-      if (pick === 'topic') {
-        activeCard = id;
-        activeLeaf = '';
-        page = 'picker';
-      } else {
-        activeLeaf = id;
-        page = 'open';
-      }
-      recipient();
-    }, goBack);
+    const cards = deckCards();
+    const start = Math.max(0, cards.findIndex(item => item.id === activeLeaf));
+    enableHand(hand, start, pickFromDeck, goBack);
   }
 
   const reader = document.querySelector('#reader');
@@ -694,10 +742,20 @@ function wrapIndex(value, n) {
 }
 
 function goBack() {
-  if (page === 'open') page = 'picker';
-  else if (page === 'picker') page = 'list';
-  else if (page === 'list') page = 'cover';
-  else return;
+  if (page === 'open') {
+    if (activeDeck || isTitleDeck()) page = 'deck';
+    else page = 'cover';
+  } else if (page === 'deck') {
+    if (activeDeck && isTitleDeck()) {
+      activeLeaf = activeDeck;
+      activeDeck = '';
+      page = 'deck';
+    } else {
+      activeDeck = '';
+      activeLeaf = '';
+      page = 'cover';
+    }
+  } else return;
   recipient();
 }
 
