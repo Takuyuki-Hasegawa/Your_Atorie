@@ -530,35 +530,117 @@ const mediaMaxEdge = 1600;
 const mediaJpegQuality = 0.82;
 const mediaSkipBytes = 450 * 1024;
 
-async function imageBitmap(blob) {
+function jpegOrientation(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (view.byteLength < 12 || view.getUint16(0) !== 0xFFD8) return 1;
+  let offset = 2;
+  while (offset + 8 < view.byteLength) {
+    if (view.getUint8(offset) !== 0xFF) return 1;
+    const marker = view.getUint8(offset + 1);
+    if (marker === 0xDA) return 1;
+    const size = view.getUint16(offset + 2);
+    if (marker === 0xE1 && offset + 10 < view.byteLength && view.getUint32(offset + 4) === 0x45786966 && view.getUint16(offset + 8) === 0) {
+      const tiff = offset + 10;
+      const endian = view.getUint16(tiff);
+      if (endian !== 0x4949 && endian !== 0x4D4D) return 1;
+      const little = endian === 0x4949;
+      const get16 = at => view.getUint16(at, little);
+      const get32 = at => view.getUint32(at, little);
+      const ifd0 = tiff + get32(tiff + 4);
+      if (ifd0 + 2 > view.byteLength) return 1;
+      const count = get16(ifd0);
+      for (let i = 0; i < count; i += 1) {
+        const entry = ifd0 + 2 + i * 12;
+        if (entry + 12 > view.byteLength) break;
+        if (get16(entry) === 0x0112) return get16(entry + 8) || 1;
+      }
+      return 1;
+    }
+    offset += 2 + size;
+  }
+  return 1;
+}
+
+async function readJpegOrientation(blob) {
+  const type = blob.type || '';
+  const name = blob.name || '';
+  if (type && type !== 'image/jpeg' && !/\.jpe?g$/i.test(name)) return 1;
+  const bytes = new Uint8Array(await blob.slice(0, 65536).arrayBuffer());
+  return jpegOrientation(bytes);
+}
+
+async function rawImageBitmap(blob) {
   try {
-    return await createImageBitmap(blob, { imageOrientation: 'from-image' });
+    return await createImageBitmap(blob, { imageOrientation: 'none' });
   } catch {
     return createImageBitmap(blob);
   }
 }
 
+function orientCanvas(ctx, orient, width, height) {
+  switch (orient) {
+    case 2:
+      ctx.transform(-1, 0, 0, 1, width, 0);
+      break;
+    case 3:
+      ctx.translate(width, height);
+      ctx.rotate(Math.PI);
+      break;
+    case 4:
+      ctx.transform(1, 0, 0, -1, 0, height);
+      break;
+    case 5:
+      ctx.transform(0, 1, 1, 0, 0, 0);
+      break;
+    case 6:
+      ctx.translate(width, 0);
+      ctx.rotate(Math.PI / 2);
+      break;
+    case 7:
+      ctx.transform(0, -1, -1, 0, width, height);
+      break;
+    case 8:
+      ctx.translate(0, height);
+      ctx.rotate(-Math.PI / 2);
+      break;
+    default:
+      break;
+  }
+}
+
 async function fitImage(blob) {
-  const bitmap = await imageBitmap(blob);
-  const edge = Math.max(bitmap.width, bitmap.height);
-  const alreadyLight = edge <= mediaMaxEdge && blob.size <= mediaSkipBytes && blob.type === 'image/jpeg';
-  if (alreadyLight) {
+  const orient = await readJpegOrientation(blob);
+  const bitmap = await rawImageBitmap(blob);
+  const swap = orient >= 5 && orient <= 8;
+  const baked = swap && bitmap.height >= bitmap.width;
+  const useOrient = baked ? 1 : orient;
+  const srcW = bitmap.width;
+  const srcH = bitmap.height;
+  const upW = useOrient >= 5 && useOrient <= 8 ? srcH : srcW;
+  const upH = useOrient >= 5 && useOrient <= 8 ? srcW : srcH;
+  const edge = Math.max(upW, upH);
+  if (edge <= mediaMaxEdge && blob.size <= mediaSkipBytes && (blob.type === 'image/jpeg' || !blob.type)) {
     bitmap.close?.();
     return blob;
   }
   const scale = edge > mediaMaxEdge ? mediaMaxEdge / edge : 1;
-  const width = Math.max(1, Math.round(bitmap.width * scale));
-  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const drawW = Math.max(1, Math.round(srcW * scale));
+  const drawH = Math.max(1, Math.round(srcH * scale));
+  const width = useOrient >= 5 && useOrient <= 8 ? drawH : drawW;
+  const height = useOrient >= 5 && useOrient <= 8 ? drawW : drawH;
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d', { alpha: false });
   ctx.fillStyle = '#111010';
   ctx.fillRect(0, 0, width, height);
-  ctx.drawImage(bitmap, 0, 0, width, height);
+  ctx.save();
+  orientCanvas(ctx, useOrient, width, height);
+  ctx.drawImage(bitmap, 0, 0, drawW, drawH);
+  ctx.restore();
   bitmap.close?.();
   const out = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', mediaJpegQuality));
-  if (!out || out.size >= blob.size) return blob;
+  if (!out || (useOrient === 1 && out.size >= blob.size)) return blob;
   return out;
 }
 
