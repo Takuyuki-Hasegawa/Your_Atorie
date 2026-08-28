@@ -526,12 +526,59 @@ function isVideo(card) {
   return card?.mediaType === 'video' || /\.(mp4|webm|mov|m4v|ogv)$/i.test(card?.mediaName || '');
 }
 
+const mediaMaxEdge = 1600;
+const mediaJpegQuality = 0.82;
+const mediaSkipBytes = 450 * 1024;
+
+async function imageBitmap(blob) {
+  try {
+    return await createImageBitmap(blob, { imageOrientation: 'from-image' });
+  } catch {
+    return createImageBitmap(blob);
+  }
+}
+
+async function fitImage(blob) {
+  const bitmap = await imageBitmap(blob);
+  const edge = Math.max(bitmap.width, bitmap.height);
+  const alreadyLight = edge <= mediaMaxEdge && blob.size <= mediaSkipBytes && blob.type === 'image/jpeg';
+  if (alreadyLight) {
+    bitmap.close?.();
+    return blob;
+  }
+  const scale = edge > mediaMaxEdge ? mediaMaxEdge / edge : 1;
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d', { alpha: false });
+  ctx.fillStyle = '#111010';
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close?.();
+  const out = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', mediaJpegQuality));
+  if (!out || out.size >= blob.size) return blob;
+  return out;
+}
+
+async function fitMedia(blob, kind = '') {
+  if (!blob) return blob;
+  const video = kind === 'video' || isVideoFile(blob);
+  if (video) return blob;
+  try {
+    return await fitImage(blob);
+  } catch {
+    return blob;
+  }
+}
+
 function mediaTag(card, className, mode = '') {
   if (!card?.media) return '';
   if (isVideo(card)) {
     const cover = mode === 'ambience' && className === 'cover-photo';
     const extra = cover ? ' autoplay loop' : mode === 'ambience' ? ' loop' : '';
-    return `<video class="${className}" src="${card.media}" muted playsinline preload="${mode ? 'auto' : 'metadata'}" draggable="false"${extra}></video>`;
+    return `<video class="${className}" src="${card.media}" muted playsinline preload="${cover ? 'auto' : 'metadata'}" draggable="false"${extra}></video>`;
   }
   return `<img class="${className}" src="${card.media}" alt="" draggable="false">`;
 }
@@ -1327,7 +1374,14 @@ async function packDraft() {
     const blob = await mediaBlob(originals[i]);
     copies[i].media = '';
     if (!blob) continue;
-    copies[i].mediaData = await blobToDataUrl(blob);
+    const fitted = await fitMedia(blob, originals[i].mediaType);
+    copies[i].mediaData = await blobToDataUrl(fitted);
+    if ((fitted.type || '').startsWith('image/')) {
+      copies[i].mediaType = 'image';
+      if (fitted.type === 'image/jpeg' && copies[i].mediaName) {
+        copies[i].mediaName = String(copies[i].mediaName).replace(/\.[^.]+$/, '.jpg');
+      }
+    }
   }
   return snapshot;
 }
@@ -1464,6 +1518,7 @@ async function upload(event, path) {
   const card = cardAt(path);
   const status = document.querySelector(`[data-status="${path}"]`);
   const mediaType = isVideoFile(file) ? 'video' : 'image';
+  const fitted = await fitMedia(file, mediaType);
 
   if (status) status.textContent = u('chosen', file.name);
 
@@ -1471,15 +1526,15 @@ async function upload(event, path) {
     URL.revokeObjectURL(card.media);
   }
 
-  card.media = URL.createObjectURL(file);
+  card.media = URL.createObjectURL(fitted);
   card.mediaId = card.mediaId || card.id;
-  card.mediaName = file.name;
+  card.mediaName = fitted.type === 'image/jpeg' ? String(file.name || 'photo').replace(/\.[^.]+$/, '.jpg') : file.name;
   card.mediaType = mediaType;
   save();
   creator();
 
   try {
-    await putMedia(card.mediaId, file);
+    await putMedia(card.mediaId, fitted);
     toast(u('savedFile'));
   } catch {
     toast(u('previewOnly'));
