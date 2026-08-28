@@ -86,17 +86,9 @@ function isVideoMime(mime, name, mediaType) {
   return mediaType === 'video' || (mime || '').startsWith('video/') || /\.(mp4|webm|mov|m4v)$/i.test(name || '');
 }
 
-function publishedTripId() {
-  try {
-    const id = fs.readFileSync(path.join(root, 'trips', '.current-id'), 'utf8').trim();
-    if (/^[a-zA-Z0-9_-]+$/.test(id)) return id;
-  } catch {}
-  return '';
-}
-
 function writePublished(trip) {
-  const id = publishedTripId() || randomUUID();
-  fs.writeFileSync(path.join(root, 'trips', '.current-id'), `${id}\n`);
+  const requested = String(trip.id || '').trim();
+  const id = /^[a-zA-Z0-9_-]+$/.test(requested) ? requested : randomUUID();
   const mediaDir = path.join(root, 'media', id);
   const tripsDir = path.join(root, 'trips');
   fs.mkdirSync(tripsDir, { recursive: true });
@@ -119,6 +111,7 @@ function writePublished(trip) {
   });
   if (!n) fs.rmSync(mediaDir, { recursive: true, force: true });
   const payload = {
+    id,
     author: trip.author || '',
     title: trip.title || '',
     intro: trip.intro || '',
@@ -189,7 +182,7 @@ function publishGit(id) {
     console.log('publish-git', id, 'already on HEAD');
     return true;
   }
-  git(['commit', '-m', `Publish trip ${id}`]);
+  git(['commit', '-m', `Publish card ${id}`]);
   gitPush();
   console.log('publish-git', id, 'pushed');
   return true;

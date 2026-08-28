@@ -1,6 +1,6 @@
 # アーキテクチャ
 
-最終更新: 2026-08-27
+最終更新: 2026-08-28
 
 ## 形
 
@@ -45,20 +45,25 @@ cover → list → picker → open
 渡す一枚 `trip` の中にカードが並ぶ。カードは一枚（葉）か束。束の中は葉だけ。この形は①から⑤まで変えない。変わるのは、それを置く場所だけ。
 
 ```text
-trip
+trip                 渡す一枚。人の下に複数ある
+  id
   author
-  title
-  intro
+  title          { ja, en }  旧データは文字列。normalize がこの形へ
+  intro          { ja, en }
   cards[]
     id
-    title
-    overview
-    text
+    title        { ja, en }
+    overview     { ja, en }
+    text         { ja, en }
     media / mediaId / mediaName / mediaType
     cards[]          あれば束。中は同じ形だが cards は空
 ```
 
-旧データ `topics[]` と `kind` / `body` / `name` は `normalizeTrip()` がこの形へ移す。`author` が無ければ `takuyuki hasegawa`。下書きでは `旅で感じたこと` が無ければ足す。箱から読むときは足さない。
+下書きはカードごと。`localStorage` の `your-atorie-atelier-v1` に id の一覧、`your-atorie-card-{id}` に本体。旧キー `your-atorie-china-v2` は最初の一枚へ移す。中国旅の雛形にだけ `旅で感じたこと` を足す。箱から読むときは足さない。
+
+旧データ `topics[]` と `kind` / `body` / `name` は `normalizeTrip()` がこの形へ移す。文章が文字列なら `{ ja: その文, en: '' }`。`author` が無ければ `takuyuki hasegawa`。英語が空のときは表示が日本語に戻る。
+
+言語は右上の JA | EN。表示と、作成画面の打ち込み先が切り替わる。UI文言は `ui`。本文は作者が両方書く。翻訳はまだしない。選びは `localStorage` の `your-atorie-lang`。無ければブラウザ言語。
 
 ## 保存の計画（①〜⑤）
 
@@ -79,7 +84,9 @@ trip
 入力も出力も、**開いているそのURLのブラウザの中**。
 
 ```
-文章・構造  → localStorage     key: your-atorie-china-v2
+文章・構造  → localStorage
+                your-atorie-atelier-v1     持っているカードの id
+                your-atorie-card-{id}      渡す一枚の下書き
 写真・動画  → IndexedDB        db: your-atorie-china-media / store: media
 ```
 
@@ -106,7 +113,7 @@ PCで「スマホへ」
 
 ### ③ web上にリリース
 
-アプリのファイルを HTTPS の公開オリジンに置く。GitHub Pages。`main` への push で Actions が配信する。
+アプリのファイルを HTTPS の公開オリジンに置く。GitHub Pages。`main` への push で Actions が配信する。テスト中は public。友人が本格的に作るときはサーバーへ移す。
 
 ```
 アプリ本体     → https://takuyuki-hasegawa.github.io/Your_Atorie/
@@ -119,15 +126,15 @@ PCで「スマホへ」
 
 会っている相手がカメラで読む。そのQRの先で、②と同じ出力が見える必要がある。だからここで初めて、カードをブラウザの外に出す。
 
-箱は同じ GitHub Pages。ブラウザは Pages に直接置けないので、PCの `server.mjs` が窓口になる。
+箱は GitHub Pages。ブラウザは Pages に直接置けないので、PCの `server.mjs` が窓口になる。同じWi-Fiである必要はない。
 
 ```
 PCの作成画面で「渡す」
   → POST http://127.0.0.1:4180/publish   （loopback だけ）
-  → 同じ id を使い回す（trips/.current-id）
+  → そのカードの id（trip.id）。二枚目は別 id
   → trips/{id}.json
   → media/{id}/…
-  → git add / 変わっていれば commit / push（この二箇所だけ）
+  → git add / 変わっていれば commit / push（このカードの二箇所だけ）
   → 箱にあれば QR（すでに載っていても出す）
 公開URL
   https://takuyuki-hasegawa.github.io/Your_Atorie/?c={id}
@@ -141,7 +148,7 @@ QR
 
 作成の流れは `書く → この箱に置く → QRを画面に出す`。QRに載せるのはURLだけ。チャットに貼って遠隔配信するのが主目的ではない。
 
-アカウントはまだ作らない。URLを持っている人が見られる。リポジトリは public なので、`trips/` は GitHub 上で列挙できる。信頼の輪の外に出さない、は運用で守る。id を広告しない。
+受け手の画面は一枚のまま。人の下にカードが複数あるのは、別の `?c=` が増えるだけ。作成の棚はまだ作らない。切替は作成画面の「新しいカード」だけ。
 
 `?c=` を開いているときは `publishedMode`。`save()` しない。
 
@@ -171,13 +178,11 @@ QR
 
 1. いまの下書きを pack する（写真は Data URL）
 2. `127.0.0.1:4180/publish` へ送る
-3. `trips/{id}.json` と `media/{id}/` を書いて、変わっていれば push する。同じ id なら上書き
+3. `trips/{id}.json` と `media/{id}/` を書いて、変わっていれば push する。カードごとに id。同じカードなら上書き
 4. 箱にあれば QR を出す。送れなければ QR は出さない
 
 公開オリジンの「スマホへ」は出さない。`node server.mjs` が②と④の窓口。
 
 ## 次の実装で足すもの
 
-いまは⑤。思想上の次は人（アカウント）とカードの紐づき。画面を⑤用に作り直さない。
-
-アカウント、友達通知、Bluetooth、他のカード型は、このあと。いいねとカード単位コメントも、渡せるようになってから。
+受け手の画面は変えない。作成の棚とフォローは、友人が本格的に作るときにサーバーと一緒。いいねとカード単位コメントも、渡せるようになってから。

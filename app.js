@@ -3,11 +3,166 @@ const makeId = () => {
   return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
-const blankLeaf = (title = '新しいカード') => ({
+const langKey = 'your-atorie-lang';
+
+function initialLang() {
+  try {
+    const saved = localStorage.getItem(langKey);
+    if (saved === 'en' || saved === 'ja') return saved;
+  } catch {}
+  return (navigator.language || '').toLowerCase().startsWith('en') ? 'en' : 'ja';
+}
+
+let lang = initialLang();
+document.documentElement.lang = lang;
+
+const ui = {
+  ja: {
+    create: '作成',
+    untitled: '無題',
+    newCard: '新しいカード',
+    play: '再生',
+    pause: '停止',
+    creatorTitle: 'カードをつくる',
+    creatorLead: '全部カードです。一枚のまま書くか、中にカードを足して束にします。下書きはこのブラウザに保存されます。',
+    viewRecipient: '受け手画面を見る',
+    toPhone: 'スマホへ',
+    publish: '渡す',
+    newPass: '新しいカード',
+    passCard: '渡す一枚',
+    name: '名前',
+    title: 'タイトル',
+    intro: 'タイトルの下の文章',
+    cards: 'カード',
+    addCard: '＋ カードを追加',
+    addInner: '＋ 中にカードを追加',
+    addToBundle: '＋ カードを追加',
+    bundle: '束',
+    single: '一枚',
+    remove: '削除',
+    removeCard: 'このカードを削除',
+    overview: '概要コメント',
+    body: '文章',
+    upload: '写真または動画（空なら文章カード）',
+    chosen: name => `選択済み：${name}`,
+    none: '未選択',
+    showing: '表示中',
+    removeMedia: 'メディアを外す',
+    phoneRefresh: 'スマホを更新してください',
+    startServer: 'node server.mjs を起動してください',
+    boxFail: '箱に置けませんでした',
+    qrFail: 'QRを作れませんでした',
+    notArrived: 'このカードはまだ届いていません',
+    mediaFail: '保存済みメディアの読み込みに失敗しました',
+    savedFile: 'ファイルを保存しました',
+    previewOnly: 'プレビューは表示しましたが、ブラウザ保存に失敗しました',
+    received: (author, title) => `あなたは${author}さんの「${title}」のcardを受け取りました！`,
+    feeling: '旅で感じたこと',
+    language: '言語'
+  },
+  en: {
+    create: 'Create',
+    untitled: 'Untitled',
+    newCard: 'New card',
+    play: 'Play',
+    pause: 'Stop',
+    creatorTitle: 'Make a card',
+    creatorLead: 'Everything is a card. Write one card, or add cards inside to make a bundle. The draft stays in this browser.',
+    viewRecipient: 'See recipient view',
+    toPhone: 'To phone',
+    publish: 'Pass',
+    newPass: 'New card',
+    passCard: 'The card you pass',
+    name: 'Name',
+    title: 'Title',
+    intro: 'Text under the title',
+    cards: 'Cards',
+    addCard: '+ Add a card',
+    addInner: '+ Add cards inside',
+    addToBundle: '+ Add a card',
+    bundle: 'Bundle',
+    single: 'Single',
+    remove: 'Delete',
+    removeCard: 'Delete this card',
+    overview: 'Overview',
+    body: 'Text',
+    upload: 'Photo or video (empty = text card)',
+    chosen: name => `Selected: ${name}`,
+    none: 'None',
+    showing: 'Showing',
+    removeMedia: 'Remove media',
+    phoneRefresh: 'Refresh the phone',
+    startServer: 'Start node server.mjs',
+    boxFail: 'Could not put it in the box',
+    qrFail: 'Could not make the QR',
+    notArrived: 'This card has not arrived yet',
+    mediaFail: 'Could not load saved media',
+    savedFile: 'File saved',
+    previewOnly: 'Preview is showing, but browser save failed',
+    received: (author, title) => `You received ${author}'s “${title}” card!`,
+    feeling: 'What the trip felt like',
+    language: 'Language'
+  }
+};
+
+function u(key, ...args) {
+  const table = ui[lang] || ui.ja;
+  const value = table[key] ?? ui.ja[key] ?? '';
+  return typeof value === 'function' ? value(...args) : value;
+}
+
+function isLoc(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value) && ('ja' in value || 'en' in value);
+}
+
+function asCopy(value) {
+  if (isLoc(value)) return { ja: String(value.ja || ''), en: String(value.en || '') };
+  return { ja: String(value || ''), en: '' };
+}
+
+function readCopy(value) {
+  const loc = asCopy(value);
+  return (loc[lang] || loc.ja || loc.en || '').trim();
+}
+
+function editCopy(value) {
+  return asCopy(value)[lang] || '';
+}
+
+function writeCopy(obj, key, value) {
+  obj[key] = asCopy(obj[key]);
+  obj[key][lang] = value;
+}
+
+function hasCopy(value) {
+  const loc = asCopy(value);
+  return Boolean(loc.ja.trim() || loc.en.trim());
+}
+
+function langTabs() {
+  return `<div class="lang-tabs" role="tablist" aria-label="${esc(u('language'))}"><button type="button" class="lang-tab${lang === 'ja' ? ' is-on' : ''}" data-lang="ja">JA</button><button type="button" class="lang-tab${lang === 'en' ? ' is-on' : ''}" data-lang="en">EN</button></div>`;
+}
+
+function bindLang() {
+  document.querySelectorAll('[data-lang]').forEach(button => {
+    button.onclick = () => {
+      const next = button.dataset.lang === 'en' ? 'en' : 'ja';
+      if (next === lang) return;
+      lang = next;
+      try {
+        localStorage.setItem(langKey, lang);
+      } catch {}
+      document.documentElement.lang = lang;
+      renderCurrent();
+    };
+  });
+}
+
+const blankLeaf = (title = '') => ({
   id: makeId(),
-  title,
-  overview: '',
-  text: '',
+  title: title ? asCopy(title) : { ja: '新しいカード', en: 'New card' },
+  overview: { ja: '', en: '' },
+  text: { ja: '', en: '' },
   media: '',
   mediaId: '',
   mediaName: '',
@@ -87,9 +242,11 @@ const initial = {
 };
 
 const app = document.querySelector('#app');
-const key = 'your-atorie-china-v2';
+const oldDraftKey = 'your-atorie-china-v2';
+const atelierKey = 'your-atorie-atelier-v1';
 const mediaDbName = 'your-atorie-china-media';
-let trip = JSON.parse(localStorage.getItem(key) || 'null') || structuredClone(initial);
+let trip = structuredClone(initial);
+let atelier = { name: 'takuyuki hasegawa', current: '', cards: [] };
 let page = 'cover';
 let activeCard = '';
 let activeLeaf = '';
@@ -137,9 +294,9 @@ function isBundle(card) {
 
 function normalizeCard(card) {
   card.id ||= makeId();
-  card.title ||= card.name || '';
-  card.overview ||= '';
-  card.text ||= card.body || '';
+  card.title = asCopy(card.title || card.name || '');
+  card.overview = asCopy(card.overview);
+  card.text = asCopy(card.text || card.body || '');
   card.media ||= '';
   card.mediaId ||= '';
   card.mediaName ||= '';
@@ -157,10 +314,10 @@ function normalizeCard(card) {
 
 function ensureFeelingCard() {
   if (trip.cards.some(card => card.id === 'feeling')) return;
+  if (!trip.cards.some(card => card.id === 'food' || card.id === 'people' || card.id === 'sightseeing')) return;
   const feeling = {
-    ...blankLeaf('旅で感じたこと'),
-    id: 'feeling',
-    title: '旅で感じたこと'
+    ...blankLeaf({ ja: '旅で感じたこと', en: 'What the trip felt like' }),
+    id: 'feeling'
   };
   const peopleIndex = trip.cards.findIndex(card => card.id === 'people');
   if (peopleIndex >= 0) {
@@ -175,7 +332,10 @@ function normalizeTrip() {
     trip.cards = trip.topics;
   }
   delete trip.topics;
+  trip.id = /^[a-zA-Z0-9_-]+$/.test(String(trip.id || '')) ? trip.id : makeId();
   trip.author = (trip.author || '').trim() || 'takuyuki hasegawa';
+  trip.title = asCopy(trip.title);
+  trip.intro = asCopy(trip.intro);
   trip.cards ||= [];
   trip.cards.forEach(normalizeCard);
   if (!publishedMode) ensureFeelingCard();
@@ -186,12 +346,98 @@ function authorName() {
 }
 
 function joyLayer() {
-  const title = (trip.title || '').trim() || '無題';
-  return `<div class="joy" id="joy"><div class="joy-window"><p>あなたは${esc(authorName())}さんの「${esc(title)}」のcardを受け取りました！</p></div></div>`;
+  const title = readCopy(trip.title) || u('untitled');
+  return `<div class="joy" id="joy"><div class="joy-window"><p>${esc(u('received', authorName(), title))}</p></div></div>`;
 }
 
 function isReceiveLanding() {
   return publishedMode || isPhonePreview() || (isViewOnly() && !publishedId());
+}
+
+function draftKey(id) {
+  return `your-atorie-card-${id}`;
+}
+
+function readJson(storageKey) {
+  try {
+    return JSON.parse(localStorage.getItem(storageKey) || 'null');
+  } catch {
+    return null;
+  }
+}
+
+function saveAtelier() {
+  localStorage.setItem(atelierKey, JSON.stringify(atelier));
+}
+
+function blankPass() {
+  return {
+    id: makeId(),
+    author: atelier.name || 'takuyuki hasegawa',
+    title: { ja: '', en: '' },
+    intro: { ja: '', en: '' },
+    cards: []
+  };
+}
+
+function migrateDrafts() {
+  const stored = readJson(atelierKey);
+  if (stored && Array.isArray(stored.cards) && stored.cards.length) {
+    atelier = {
+      name: stored.name || 'takuyuki hasegawa',
+      current: stored.current || stored.cards[0],
+      cards: stored.cards.filter(id => /^[a-zA-Z0-9_-]+$/.test(id))
+    };
+    const draft = readJson(draftKey(atelier.current)) || readJson(draftKey(atelier.cards[0]));
+    if (draft && Array.isArray(draft.cards)) {
+      trip = draft;
+      if (draft.id) atelier.current = draft.id;
+    }
+    return;
+  }
+  const old = readJson(oldDraftKey);
+  if (old && Array.isArray(old.cards)) trip = old;
+  trip.id ||= makeId();
+  atelier = {
+    name: trip.author || 'takuyuki hasegawa',
+    current: trip.id,
+    cards: [trip.id]
+  };
+}
+
+function passLabel(id) {
+  const draft = id === trip.id ? trip : readJson(draftKey(id));
+  return readCopy(draft?.title) || u('untitled');
+}
+
+function passPicker() {
+  const options = atelier.cards.map(id => (
+    `<option value="${esc(id)}"${id === trip.id ? ' selected' : ''}>${esc(passLabel(id))}</option>`
+  )).join('');
+  return `<div class="pass-switch"><select id="pass-pick">${options}</select><button type="button" id="new-pass">${esc(u('newPass'))}</button></div>`;
+}
+
+function openPass(id) {
+  if (!id || id === trip.id) return;
+  save();
+  const draft = readJson(draftKey(id));
+  if (!draft || !Array.isArray(draft.cards)) return;
+  trip = draft;
+  atelier.current = id;
+  normalizeTrip();
+  saveAtelier();
+  creator();
+  hydrateMedia().catch(() => toast(u('mediaFail')));
+}
+
+function newPass() {
+  save();
+  trip = blankPass();
+  normalizeTrip();
+  if (!atelier.cards.includes(trip.id)) atelier.cards.push(trip.id);
+  atelier.current = trip.id;
+  save();
+  creator();
 }
 
 function clearMediaFields(card) {
@@ -201,9 +447,14 @@ function clearMediaFields(card) {
 
 function save() {
   if (publishedMode) return;
+  trip.id ||= makeId();
   const snapshot = structuredClone(trip);
   snapshot.cards.forEach(clearMediaFields);
-  localStorage.setItem(key, JSON.stringify(snapshot));
+  localStorage.setItem(draftKey(trip.id), JSON.stringify(snapshot));
+  if (!atelier.cards.includes(trip.id)) atelier.cards.push(trip.id);
+  atelier.current = trip.id;
+  atelier.name = trip.author || atelier.name;
+  saveAtelier();
 }
 
 function requestToPromise(request) {
@@ -290,22 +541,24 @@ function mark(title) {
 }
 
 function renderLeafCard(card) {
-  const title = card.title ? `<h3>${esc(card.title)}</h3>` : '';
-  const text = card.text ? `<p>${esc(card.text)}</p>` : '';
-  const play = isVideo(card) ? '<button class="video-play" type="button" aria-label="再生">▶</button>' : '';
+  const heading = readCopy(card.title);
+  const body = readCopy(card.text);
+  const title = heading ? `<h3>${esc(heading)}</h3>` : '';
+  const text = body ? `<p>${esc(body)}</p>` : '';
+  const play = isVideo(card) ? `<button class="video-play" type="button" aria-label="${esc(u('play'))}">▶</button>` : '';
   const photo = card.media
     ? `<div class="tinder-photo">${mediaTag(card, 'tinder-photo-media', isVideo(card) ? 'play' : '')}${play}</div>`
     : '';
   return `<article class="card tinder-card${card.media ? ' is-photo' : ' is-letter'}" data-leaf-id="${card.id}">${photo}<div class="tinder-copy">${title}${text}</div></article>`;
 }
 
-function shell(content, { back, title, extra } = {}) {
-  const createButton = isViewOnly() || title ? '' : '<button id="creator-link">作成</button>';
+function shell(content, { back, title } = {}) {
+  const createButton = isViewOnly() || title ? '' : `<button id="creator-link">${esc(u('create'))}</button>`;
   const backBtn = back ? `<button class="nav-back" type="button" data-page="${back}">←</button>` : '';
   const label = title
     ? `<h1 class="top-title">${esc(title)}</h1>`
     : '<span class="brand">YOUR ATORIE</span>';
-  const trailing = extra || createButton || '<span></span>';
+  const trailing = `<div class="top-actions">${createButton}${langTabs()}</div>`;
   const joy = joyOpen ? joyLayer() : '';
   app.innerHTML = `<main class="phone"><header class="topbar">${backBtn}${label}${trailing}</header>${content}${joy}</main>`;
   const creatorLink = document.querySelector('#creator-link');
@@ -315,6 +568,7 @@ function shell(content, { back, title, extra } = {}) {
       creator();
     };
   }
+  bindLang();
   bindJoy();
   bindRecipient();
 }
@@ -335,7 +589,8 @@ function coverMedia() {
 function coverCard(openable) {
   const source = coverMedia();
   const action = openable ? ' data-page="list" role="button" tabindex="0"' : '';
-  return `<div class="cover-wrap"${action}><span class="cover-back"></span><span class="cover-mid"></span><span class="cover-face">${mediaTag(source, 'cover-photo', 'ambience')}<span class="cover-copy"><h1>${esc(trip.title)}</h1><p>${esc(trip.intro)}</p></span></span></div>`;
+  const intro = readCopy(trip.intro);
+  return `<div class="cover-wrap"${action}><span class="cover-back"></span><span class="cover-mid"></span><span class="cover-face">${mediaTag(source, 'cover-photo', 'ambience')}<span class="cover-copy"><h1>${esc(readCopy(trip.title))}</h1>${intro ? `<p>${esc(intro)}</p>` : ''}</span></span></div>`;
 }
 
 function leavesOf(card) {
@@ -345,10 +600,11 @@ function leavesOf(card) {
 
 function handFace(card, kind) {
   const source = kind === 'topic' ? previewSource(card) : card;
+  const heading = readCopy(card.title);
   const media = mediaTag(source, 'hand-photo', kind === 'topic' ? 'ambience' : '');
-  const blank = media ? '' : `<span class="hand-blank"><em>${mark(card.title)}</em></span>`;
-  const note = kind === 'topic' ? card.overview : card.text;
-  const copy = `<div class="hand-copy"><strong>${esc(card.title)}</strong>${note ? `<small>${esc(note)}</small>` : ''}</div>`;
+  const blank = media ? '' : `<span class="hand-blank"><em>${mark(heading)}</em></span>`;
+  const note = kind === 'topic' ? readCopy(card.overview) : readCopy(card.text);
+  const copy = `<div class="hand-copy"><strong>${esc(heading)}</strong>${note ? `<small>${esc(note)}</small>` : ''}</div>`;
   return `<article class="hand-card${media ? '' : ' is-letter'}" data-hand-id="${card.id}"><div class="hand-face">${media}${blank}${copy}</div></article>`;
 }
 
@@ -356,7 +612,7 @@ function pickerView(card) {
   const leaves = leavesOf(card);
   return shell(`<section class="hand-stage"><div class="hand" id="hand" data-pick="leaf">${leaves.map(item => handFace(item, 'leaf')).join('')}</div></section>`, {
     back: 'list',
-    title: card.title
+    title: readCopy(card.title)
   });
 }
 
@@ -367,7 +623,7 @@ function topicHand() {
 function openView(bundle, leaf) {
   return shell(`<section class="reader" id="reader">${renderLeafCard(leaf)}</section>`, {
     back: 'picker',
-    title: bundle.title
+    title: readCopy(bundle.title)
   });
 }
 
@@ -767,7 +1023,7 @@ function bindVideoPlay() {
     const sync = () => {
       const playing = !video.paused;
       button.classList.toggle('is-playing', playing);
-      button.setAttribute('aria-label', playing ? '停止' : '再生');
+      button.setAttribute('aria-label', playing ? u('pause') : u('play'));
       button.textContent = playing ? '❚❚' : '▶';
     };
     button.onclick = event => {
@@ -804,42 +1060,43 @@ function field(label, value, path, area = false) {
 }
 
 function mediaFields(card, path) {
-  return `<label class="upload"><span>写真または動画（空なら文章カード）</span><input type="file" accept="image/*,video/*" data-upload="${path}"></label><small data-status="${path}">${card.media ? `選択済み：${esc(card.mediaName || '表示中')}` : '未選択'}</small>${card.media ? `${isVideo(card) ? `<video class="media-preview" src="${card.media}" controls></video>` : `<img class="media-preview" src="${card.media}" alt="">`}<button class="remove" data-remove-media="${path}">メディアを外す</button>` : ''}`;
+  return `<label class="upload"><span>${esc(u('upload'))}</span><input type="file" accept="image/*,video/*" data-upload="${path}"></label><small data-status="${path}">${card.media ? esc(u('chosen', card.mediaName || u('showing'))) : esc(u('none'))}</small>${card.media ? `${isVideo(card) ? `<video class="media-preview" src="${card.media}" controls></video>` : `<img class="media-preview" src="${card.media}" alt="">`}<button class="remove" data-remove-media="${path}">${esc(u('removeMedia'))}</button>` : ''}`;
 }
 
 function innerEditor(card, parentIndex, cardIndex) {
-  return `<section class="card-edit"><h3>CARD ${String(cardIndex + 1).padStart(2, '0')}</h3>${field('タイトル', card.title, `c.${parentIndex}.c.${cardIndex}.title`)}${field('文章', card.text, `c.${parentIndex}.c.${cardIndex}.text`, true)}${mediaFields(card, `${parentIndex}.${cardIndex}`)}<button class="remove" data-remove-inner="${parentIndex}.${cardIndex}">このカードを削除</button></section>`;
+  return `<section class="card-edit"><h3>CARD ${String(cardIndex + 1).padStart(2, '0')}</h3>${field(u('title'), editCopy(card.title), `c.${parentIndex}.c.${cardIndex}.title`)}${field(u('body'), editCopy(card.text), `c.${parentIndex}.c.${cardIndex}.text`, true)}${mediaFields(card, `${parentIndex}.${cardIndex}`)}<button class="remove" data-remove-inner="${parentIndex}.${cardIndex}">${esc(u('removeCard'))}</button></section>`;
 }
 
 function cardEditor(card, index) {
-  const kind = isBundle(card) ? '束' : '一枚';
-  const head = `<article class="topic-edit"><div class="topic-name"><span><strong>${esc(card.title || '無題')}</strong><small class="card-kind">${kind}</small></span><button class="remove" data-remove-card="${index}">削除</button></div>${field('タイトル', card.title, `c.${index}.title`)}${field('概要コメント', card.overview, `c.${index}.overview`, true)}`;
+  const kind = isBundle(card) ? u('bundle') : u('single');
+  const head = `<article class="topic-edit"><div class="topic-name"><span><strong>${esc(readCopy(card.title) || u('untitled'))}</strong><small class="card-kind">${esc(kind)}</small></span><button class="remove" data-remove-card="${index}">${esc(u('remove'))}</button></div>${field(u('title'), editCopy(card.title), `c.${index}.title`)}${field(u('overview'), editCopy(card.overview), `c.${index}.overview`, true)}`;
   if (isBundle(card)) {
-    return `${head}${card.cards.map((child, cardIndex) => innerEditor(child, index, cardIndex)).join('')}<button class="small-add" data-add-inner="${index}">＋ カードを追加</button></article>`;
+    return `${head}${card.cards.map((child, cardIndex) => innerEditor(child, index, cardIndex)).join('')}<button class="small-add" data-add-inner="${index}">${esc(u('addToBundle'))}</button></article>`;
   }
-  return `${head}<div class="letter-edit">${field('文章', card.text, `c.${index}.text`, true)}</div>${mediaFields(card, String(index))}<button class="small-add" data-add-inner="${index}">＋ 中にカードを追加</button></article>`;
+  return `${head}<div class="letter-edit">${field(u('body'), editCopy(card.text), `c.${index}.text`, true)}</div>${mediaFields(card, String(index))}<button class="small-add" data-add-inner="${index}">${esc(u('addInner'))}</button></article>`;
 }
 
 function creator() {
   history.replaceState({}, '', `${location.pathname}#create`);
-  const debugPush = isDebugHost() ? '<button id="push-debug">スマホへ</button>' : '';
-  app.innerHTML = `<main class="creator"><header class="creator-header"><div><h1>中国旅のカードをつくる</h1><p>全部カードです。一枚のまま書くか、中にカードを足して束にします。下書きはこのブラウザに保存されます。</p></div><div class="creator-actions"><button id="recipient">受け手画面を見る</button>${debugPush}<button class="publish" id="publish">渡す</button></div></header><div class="creator-main"><section><div class="section"><h2>渡す一枚</h2>${field('名前', trip.author, 'author')}${field('タイトル', trip.title, 'title')}${field('タイトルの下の文章', trip.intro, 'intro', true)}</div><div class="section"><h2>カード</h2>${trip.cards.map((card, index) => cardEditor(card, index)).join('')}<button class="add" id="add-card">＋ カードを追加</button></div></section><aside class="preview"><span>PREVIEW</span><div class="frame" id="preview"></div></aside></div></main>`;
+  const debugPush = isDebugHost() ? `<button id="push-debug">${esc(u('toPhone'))}</button>` : '';
+  app.innerHTML = `<main class="creator"><header class="creator-header"><div><h1>${esc(u('creatorTitle'))}</h1>${passPicker()}<p>${esc(u('creatorLead'))}</p></div><div class="creator-tools"><div class="creator-actions"><button id="recipient">${esc(u('viewRecipient'))}</button>${debugPush}<button class="publish" id="publish">${esc(u('publish'))}</button></div>${langTabs()}</div></header><div class="creator-main"><section><div class="section"><h2>${esc(u('passCard'))}</h2>${field(u('name'), trip.author, 'author')}${field(u('title'), editCopy(trip.title), 'title')}${field(u('intro'), editCopy(trip.intro), 'intro', true)}</div><div class="section"><h2>${esc(u('cards'))}</h2>${trip.cards.map((card, index) => cardEditor(card, index)).join('')}<button class="add" id="add-card">${esc(u('addCard'))}</button></div></section><aside class="preview"><span>PREVIEW</span><div class="frame" id="preview"></div></aside></div></main>`;
+  bindLang();
   bindCreator();
   preview();
 }
 
 function toBundle(card) {
-  if (!isBundle(card) && (card.text || card.media)) {
+  if (!isBundle(card) && (hasCopy(card.text) || card.media)) {
     card.cards = [{
       ...blankLeaf(''),
-      title: '',
-      text: card.text,
+      title: asCopy(''),
+      text: asCopy(card.text),
       media: card.media,
       mediaId: card.mediaId,
       mediaName: card.mediaName,
       mediaType: card.mediaType
     }];
-    card.text = '';
+    card.text = asCopy('');
     card.media = '';
     card.mediaId = '';
     card.mediaName = '';
@@ -935,20 +1192,31 @@ function bindCreator() {
 
   const pushDebug = document.querySelector('#push-debug');
   if (pushDebug) pushDebug.onclick = () => pushDebugDraft();
+
+  const pick = document.querySelector('#pass-pick');
+  if (pick) {
+    pick.onchange = () => openPass(pick.value);
+  }
+  const makeNew = document.querySelector('#new-pass');
+  if (makeNew) makeNew.onclick = () => newPass();
 }
 
 function set(path, value) {
   const parts = path.split('.');
-  if (parts[0] === 'author' || parts[0] === 'title' || parts[0] === 'intro') {
-    trip[parts[0]] = value;
+  if (parts[0] === 'author') {
+    trip.author = value;
+    return;
+  }
+  if (parts[0] === 'title' || parts[0] === 'intro') {
+    writeCopy(trip, parts[0], value);
     return;
   }
   const card = trip.cards[Number(parts[1])];
   if (parts[2] === 'c') {
-    card.cards[Number(parts[3])][parts[4]] = value;
+    writeCopy(card.cards[Number(parts[3])], parts[4], value);
     return;
   }
-  card[parts[2]] = value;
+  writeCopy(card, parts[2], value);
 }
 
 function walkCards(visit) {
@@ -1039,9 +1307,10 @@ function passView(url, title) {
   try {
     svg = qrSvg(url);
   } catch {
-    toast('QRを作れませんでした');
+    toast(u('qrFail'));
   }
-  app.innerHTML = `<main class="pass"><header class="topbar"><button class="nav-back" type="button" id="pass-back">←</button><span class="brand">YOUR ATORIE</span><span></span></header><section class="pass-stage"><div><div class="pass-qr">${svg}</div><h1 class="pass-title">${esc(title || '')}</h1><p class="pass-url">${esc(url)}</p></div></section></main>`;
+  app.innerHTML = `<main class="pass"><header class="topbar"><button class="nav-back" type="button" id="pass-back">←</button><span class="brand">YOUR ATORIE</span><div class="top-actions">${langTabs()}</div></header><section class="pass-stage"><div><div class="pass-qr">${svg}</div><h1 class="pass-title">${esc(readCopy(title))}</h1><p class="pass-url">${esc(url)}</p></div></section></main>`;
+  bindLang();
   document.querySelector('#pass-back').onclick = () => {
     location.hash = 'create';
     creator();
@@ -1063,15 +1332,17 @@ async function publishTrip() {
       const data = await res.json();
       if (!data?.url) continue;
       if (!data.pushed) {
-        toast('箱に置けませんでした');
+        toast(u('boxFail'));
         return false;
       }
+      if (data.id) trip.id = data.id;
+      save();
       sessionStorage.setItem('atorie-pass', JSON.stringify({ url: data.url, title: trip.title }));
       passView(data.url, trip.title);
       return true;
     } catch {}
   }
-  toast('node server.mjs を起動してください');
+  toast(u('startServer'));
   return false;
 }
 
@@ -1103,12 +1374,12 @@ async function pushDebugDraft(silent = false) {
         body
       });
       if (res.ok) {
-        if (!silent) toast('スマホを更新してください');
+        if (!silent) toast(u('phoneRefresh'));
         return true;
       }
     } catch {}
   }
-  if (!silent) toast('node server.mjs を起動してください');
+  if (!silent) toast(u('startServer'));
   return false;
 }
 
@@ -1136,7 +1407,7 @@ async function upload(event, path) {
   const status = document.querySelector(`[data-status="${path}"]`);
   const mediaType = isVideoFile(file) ? 'video' : 'image';
 
-  if (status) status.textContent = `選択済み：${file.name}`;
+  if (status) status.textContent = u('chosen', file.name);
 
   if (card.media && card.media.startsWith('blob:')) {
     URL.revokeObjectURL(card.media);
@@ -1151,9 +1422,9 @@ async function upload(event, path) {
 
   try {
     await putMedia(card.mediaId, file);
-    toast('ファイルを保存しました');
+    toast(u('savedFile'));
   } catch {
-    toast('プレビューは表示しましたが、ブラウザ保存に失敗しました');
+    toast(u('previewOnly'));
   }
 }
 
@@ -1172,6 +1443,8 @@ function toast(message) {
 }
 
 function renderCurrent() {
+  const heading = readCopy(trip.title);
+  document.title = heading ? `${heading} — YOUR ATORIE` : 'YOUR ATORIE';
   if (location.hash === '#pass' && !isViewOnly()) {
     try {
       const data = JSON.parse(sessionStorage.getItem('atorie-pass') || 'null');
@@ -1190,6 +1463,7 @@ function renderCurrent() {
   recipient();
 }
 
+migrateDrafts();
 normalizeTrip();
 start();
 window.addEventListener('hashchange', renderCurrent);
@@ -1198,7 +1472,7 @@ async function start() {
   const id = publishedId();
   if (id) {
     const ok = await loadPublished(id);
-    if (!ok) toast('このカードはまだ届いていません');
+    if (!ok) toast(u('notArrived'));
     renderCurrent();
     return;
   }
@@ -1207,6 +1481,6 @@ async function start() {
   if (isReceiveLanding()) joyOpen = true;
   renderCurrent();
   hydrateMedia().catch(() => {
-    toast('保存済みメディアの読み込みに失敗しました');
+    toast(u('mediaFail'));
   });
 }
